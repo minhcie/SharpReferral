@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Main-Class: src.main.java.Referral
+Class-Path: .
+            lib/force-wsc-36.2.0.jar
+            lib/itext-2.1.7.jar
+            lib/log4j-1.2.9.jar
+            lib/partner.jar
