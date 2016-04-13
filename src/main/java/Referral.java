@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
@@ -52,7 +54,6 @@ public class Referral {
             // Parse referral info.
             ReferralData data = parseReferralInfo(fileName);
 
-/*
             // Establish connection to Salesforce.
         	ConnectorConfig config = new ConnectorConfig();
         	config.setUsername(USERNAME);
@@ -81,7 +82,6 @@ public class Referral {
 
             // Populate referral info.
             createReferral(connection, contactId, data);
-*/
         }
         catch (IOException ioe) {
             log.error(ioe.getMessage());
@@ -101,6 +101,7 @@ public class Referral {
         ReferralData data = new ReferralData();
         SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy");
         String[] keys = {"Referral Information",
+                         "Organization:",
                          "Referral Type:",
                          "Reason:",
                          "Referral Comments",
@@ -112,7 +113,13 @@ public class Referral {
                          "Race:",
                          "Religion:",
                          "Contact 1:",
-                         "Contact 2:"};
+                         "Contact 2:",
+                         "Admission Date:",
+                         "Discharge Date:",
+                         "Patient Class:",
+                         "Diagnosis:",
+                         "Admitting",
+                         "Attending"};
 
         // Parse pdf document.
         PdfReader reader = new PdfReader(fileName);
@@ -146,6 +153,8 @@ public class Referral {
                     // Parse key data.
                     StringBuilder sb = new StringBuilder();
                     String nextLine = "";
+                    Pattern pattern = null;
+                    Matcher matcher = null;
                     switch (k) {
                         case 0: // Referral #, MRN.
                             String[] info = line.split("-");
@@ -154,12 +163,16 @@ public class Referral {
                             log.info("Referral #: " + data.number + "\n");
                             log.info("MRN: " + data.mrn + "\n");
                             break;
-                        case 1: // Referral type.
+                        case 1: // Facility.
+                            data.facility = lines[++j];
+                            log.info("Sending Organization: " + data.facility);
+                            break;
+                        case 2: // Referral type.
                             int index = line.indexOf("Referral Type:");
                             data.referralType = line.substring(index+15).trim();
                             log.info("Referral Type: " + data.referralType);
                             break;
-                        case 2: // Reason.
+                        case 3: // Reason.
                             // Reason starts from next line to referral comments.
                             nextLine = lines[++j];
                             while (!nextLine.contains("Referral Comments")) {
@@ -172,7 +185,7 @@ public class Referral {
                             log.info("Reason: " + data.reason);
                             j--; // Move back 1 line.
                             break;
-                        case 3: // Comments.
+                        case 4: // Comments.
                             // Comments starts from next line to sender's last activity.
                             nextLine = lines[++j];
                             while (!nextLine.contains("Sender's last")) {
@@ -185,7 +198,7 @@ public class Referral {
                             log.info("Referral Comments: " + data.comments);
                             j--; // Move back 1 line.
                             break;
-                        case 4: // Name.
+                        case 5: // Name.
                             int nameIndex = line.indexOf("Name:");
                             int mrnIndex = line.indexOf("MRN:");
                             String ptName = line.substring(nameIndex+6, mrnIndex);
@@ -194,7 +207,7 @@ public class Referral {
                             data.firstName = parts[1];
                             log.info("Patient Name: " + data.firstName + " " + data.lastName);
                             break;
-                        case 5: // DoB, gender.
+                        case 6: // DoB, gender.
                             int dobIndex = line.indexOf("Date of Birth:");
                             int genderIndex = line.indexOf("Gender:");
                             String sDob = line.substring(dobIndex+15, dobIndex+25);
@@ -203,7 +216,7 @@ public class Referral {
                             log.info("Date of Birth: " + data.dob.toString());
                             log.info("Gender: " + data.gender);
                             break;
-                        case 6: // Address.
+                        case 7: // Address.
                             int addrIndex = line.indexOf("Address:");
                             data.address1 = line.substring(addrIndex+9).trim();
                             j++;
@@ -215,7 +228,7 @@ public class Referral {
                             log.info("Address: " + data.address1 + ", " + data.city +
                                      ", " + data.state + " " + data.zip);
                             break;
-                        case 7: // Home, work, mobile phones.
+                        case 8: // Home, work, mobile phones.
                             int phone = 1;
                             nextLine = lines[++j];
                             while (!nextLine.contains("Marital Status")) {
@@ -236,7 +249,7 @@ public class Referral {
                             log.info("Mobile Phone: " + data.mobilePhone);
                             j--; // Move back 1 line.
                             break;
-                        case 8: // Marital status, SSN.
+                        case 9: // Marital status, SSN.
                             int msIndex = line.indexOf("Marital Status:");
                             int ssnIndex = line.indexOf("SSN:");
                             data.maritalStatus  = line.substring(msIndex+16, ssnIndex).trim();
@@ -244,42 +257,96 @@ public class Referral {
                             log.info("Marital Status: " + data.maritalStatus);
                             log.info("SSN: " + data.ssn);
                             break;
-                        case 9: // Race.
+                        case 10: // Race.
                             int raceIndex = line.indexOf("Race:");
                             int race2Index = line.indexOf("Race 2:");
                             data.race = line.substring(raceIndex+6, race2Index);
                             log.info("Race: " + data.race.trim());
                             break;
-                        case 10: // Religion.
+                        case 11: // Religion.
                             int relIndex = line.indexOf("Religion:");
                             data.religion = line.substring(relIndex+10);
                             log.info("Religion: " + data.religion.trim());
                             break;
-                        case 11: // Emergency contact 1.
+                        case 12: // Emergency contact 1.
                             // Contact 1 starts from next line to contact 2.
                             nextLine = lines[++j];
                             while (!nextLine.contains("Emergency")) {
                                 if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + "\n");
+                                    sb.append(nextLine + " ");
                                 }
                                 nextLine = lines[++j];
                             }
                             data.contact1 = sb.toString();
                             log.info("Emergency Contact 1: " + data.contact1);
                             j--; // Move back 1 line.
+
+                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                            matcher = pattern.matcher(data.contact1);
+                            if (matcher.find()) {
+                                log.info("Emergency Phone 1: " + matcher.group(0));
+                            }
                             break;
-                        case 12: // Emergency contact 2.
+                        case 13: // Emergency contact 2.
                             // Contact 2 starts from next line to contact 2.
                             nextLine = lines[++j];
                             while (nextLine != null && nextLine.trim().length() > 0) {
                                 if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + "\n");
+                                    sb.append(nextLine + " ");
                                 }
                                 nextLine = lines[++j];
                             }
                             data.contact2 = sb.toString();
                             log.info("Emergency Contact 2: " + data.contact2);
                             j--; // Move back 1 line.
+
+                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                            matcher = pattern.matcher(data.contact1);
+                            if (matcher.find()) {
+                                log.info("Emergency Phone 2: " + matcher.group(0));
+                            }
+                            break;
+                        case 14: // Admisstion date.
+                            int admisIndex = line.indexOf("Admission Date:");
+                            String sAdmission = line.substring(admisIndex+16).trim();
+                            data.admissionDate = sdf.parse(sAdmission);
+                            log.info("Admission Date: " + data.admissionDate);
+                            break;
+                        case 15: // Discharge date.
+                            nextLine = lines[++j];
+                            int firstBlankIndex = nextLine.indexOf(" ");
+                            String sDischarge = nextLine.substring(0, firstBlankIndex).trim();
+                            data.dischargeDate = sdf.parse(sDischarge);
+                            log.info("Discharge Date: " + data.dischargeDate);
+                            break;
+                        case 16: // Patient class.
+                            int ptClassIndex = line.indexOf("Patient Class:");
+                            int sourceIndex = line.indexOf("Admit Source:");
+                            data.ptClass = line.substring(ptClassIndex+15, sourceIndex).trim();
+                            log.info("Patient Class: " + data.ptClass);
+                            break;
+                        case 17: // Primary diagnosis.
+                            // Diagnosis starts from next line to admitting physician.
+                            nextLine = lines[++j];
+                            while (!nextLine.contains("Admitting")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + "\n");
+                                }
+                                nextLine = lines[++j];
+                            }
+                            data.primaryDiagnosis = sb.toString();
+                            log.info("Primary Diagnosis: " + data.primaryDiagnosis);
+                            j--; // Move back 1 line.
+                            break;
+                        case 18: // Admitting physician.
+                            j += 2;
+                            data.admittingPhysician = lines[j].trim();
+                            log.info("Admitting Physician: " + data.admittingPhysician);
+                            break;
+                        case 19: // Attending physician.
+                            j += 2;
+                            data.attendingPhysician = lines[j].trim();
+                            log.info("Admitting Physician: " + data.attendingPhysician);
                             break;
                         default:
                             break;
@@ -384,8 +451,8 @@ public class Referral {
     private static SObject copyContactInfo(ReferralData data) {
         SObject so = new SObject();
 		so.setType("Contact");
-		so.setField("FirstName", data.firstName);
-		so.setField("LastName", data.lastName);
+		so.setField("FirstName", data.firstName + "_Test");
+		so.setField("LastName", data.lastName + "_Test");
 		so.setField("SSN__c", data.ssn);
 		so.setField("Birthdate", data.dob);
 		so.setField("Home_Street__c", data.address1);
@@ -460,7 +527,7 @@ public class Referral {
     		so.setField("Client__c", contactId);
     		so.setField("Marital_Status__c", data.maritalStatus);
 
-            String levelOfCare = data.ptType.toLowerCase();
+            String levelOfCare = data.ptClass.toLowerCase();
             if (levelOfCare.contains("inpatient")) {
                 so.setField("Level_of_Care__c", "Inpatient");
             }
@@ -474,52 +541,81 @@ public class Referral {
                 so.setField("Level_of_Care__c", "Intensive Outpatient/Outpatient");
             }
 
-            boolean hasCareGiver = false;
+            String emergencyContact = "";
+            String emergencyPhone = null;
+            Pattern pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+
+            // Try to get emergency contact phone from contact 1 first.
             if (data.contact1 != null && data.contact1.length() > 0) {
-                hasCareGiver = true;
-                so.setField("Caller_Caregiver_Name__c", data.contact1);
-            }
-            else if (data.contact2 != null && data.contact2.length() > 0) {
-                hasCareGiver = true;
-                so.setField("Caller_Caregiver_Name__c", data.contact2);
-            }
-
-            if (hasCareGiver) {
-                String relationship = "";
-                if (data.contact1.length() > 0) {
-                    relationship = data.contact1.toLowerCase();
-                }
-                else {
-                    relationship = data.contact2.toLowerCase();
-                }
-                if (relationship.contains("daughter") || relationship.contains("son")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Adult Child");
-                }
-                else if (relationship.contains("self")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Self");
-                }
-                else if (relationship.contains("friend")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Friend");
-                }
-                else if (relationship.contains("neighbor")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Neighbor");
-                }
-                else if (relationship.contains("relative")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Other Relative");
-                }
-                else if (relationship.contains("other")) {
-                    so.setField("Caller_s_relationship_to_PWN__c", "Other");
+                Matcher matcher = pattern.matcher(data.contact1);
+                if (matcher.find()) {
+                    emergencyContact = data.contact1;
+                    emergencyPhone = matcher.group(0);
                 }
             }
 
-            if (data.homePhone != null) {
-                so.setField("Caller_Caregiver_Phone__c", data.homePhone);
+            // Next, try to get emergency phone info from contact 2.
+            if (emergencyPhone == null) {
+                if (data.contact2 != null && data.contact2.length() > 0) {
+                    Matcher matcher = pattern.matcher(data.contact2);
+                    if (matcher.find()) {
+                        emergencyContact = data.contact2;
+                        emergencyPhone = matcher.group(0);
+                    }
+                }
             }
-            else if (data.workPhone != null) {
-                so.setField("Caller_Caregiver_Phone__c", data.workPhone);
+
+            // If all fails, display all info in both contact 1 & 2.
+            if (emergencyPhone == null) {
+                if (data.contact1 != null && data.contact1.length() > 0) {
+                    emergencyContact += data.contact1;
+                }
+                if (data.contact2 != null && data.contact2.length() > 0) {
+                    emergencyContact += " - " + data.contact2;
+                }
             }
-            if (data.mobilePhone != null) {
-                so.setField("Caller_Caregiver_Phone__c", data.mobilePhone);
+            so.setField("Caller_Caregiver_Name__c", emergencyContact);
+
+            String relationship = emergencyContact.toLowerCase();
+            if (relationship.contains("daughter") || relationship.contains("son")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Adult Child");
+            }
+            else if (relationship.contains("spouse") || relationship.contains("wife") ||
+                     relationship.contains("husband")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Spouse");
+            }
+            else if (relationship.contains("self")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Self");
+            }
+            else if (relationship.contains("friend")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Friend");
+            }
+            else if (relationship.contains("neighbor")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Neighbor");
+            }
+            else if (relationship.contains("relative")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Other Relative");
+            }
+            else if (relationship.contains("caseworker")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Caseworker");
+            }
+            else if (relationship.contains("other")) {
+                so.setField("Caller_s_relationship_to_PWN__c", "Other");
+            }
+
+            if (emergencyPhone != null) {
+                so.setField("Caller_Caregiver_Phone__c", emergencyPhone);
+            }
+            else {
+                if (data.homePhone != null) {
+                    so.setField("Caller_Caregiver_Phone__c", data.homePhone);
+                }
+                else if (data.workPhone != null) {
+                    so.setField("Caller_Caregiver_Phone__c", data.workPhone);
+                }
+                if (data.mobilePhone != null) {
+                    so.setField("Caller_Caregiver_Phone__c", data.mobilePhone);
+                }
             }
 
     		so.setField("Patient_Type__c", "Impatient Discharge");

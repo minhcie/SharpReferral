@@ -6,9 +6,11 @@ public class ReferralData {
     public String facility;
     public Date admissionDate;
     public Date dischargeDate;
-    public String ptType;
+    public String ptClass;
     public String primaryDiagnosis;
     public String additionalDiagnosis;
+    public String admittingPhysician;
+    public String attendingPhysician;
     public String number;
     public String mrn;
     public String referralType;
