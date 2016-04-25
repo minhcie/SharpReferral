@@ -47,30 +47,55 @@ Func GetReferralInfo($id, $code)
     _IEFormElementSetValue ($oQuery1, $id)
     _IEFormElementSetValue ($oQuery2, $code)
     Local $oButton=_IEGetObjById($oIE, "btnViewReferral")
-    _IEAction ($oButton, "click")
+    _IEAction($oButton, "click")
     _IELoadWait($oIE, 0)
 
-    ; Check for any error.
+    ; Check for any login error.
     Local $oErrMsg = _IEGetObjById($oIE, "valSummary")
-    Local $iCmp = StringCompare($oErrMsg, " ")
+	Local $sText = _IEPropertyGet($oErrMsg, "innerText")
+	$sText = StringStripWS($sText, $STR_STRIPLEADING + $STR_STRIPTRAILING)
+    Local $iCmp = StringCompare($sText, "0")
     If $iCmp <> 0 Then
         _IEQuit($oIE)
         MsgBox($MB_ICONERROR, "Sharp Referral", "Invalid Referral ID and/or Access Code!")
-        ;Return False
+        Return False
     EndIf
 
 	; Save referral info as pdf.
-	Local $dtCur = _Date_Time_GetSystemTime()
-	$fName = "sharp_referral_" & _Date_Time_SystemTimeToDateStr($dtCur)
-	MsgBox($MB_OK, "debug", $fName)
+	;Local $dtCur = _Date_Time_GetSystemTime()
+	;$str = StringReplace(_Date_Time_SystemTimeToDateStr($dtCur), "/", "")
+	$fName = "sharp_referral_" & $id & ".pdf"
+
+	; Debug.
+	;MsgBox($MB_ICONINFORMATION, "debug", $fName)
+
+	Send("!fp") ; Select Print from File menu.
+	Local $hWnd = WinWaitActive("Print", '') ; Display Print dialog.
+	Sleep(100)
+	ControlFocus($hWnd, "", "[CLASS:SysListView32; INSTANCE:1]") ; Set focus to the ListView.
+	Sleep(10)
+	ControlCommand($hWnd, "", "[CLASS:SysListView32; INSTANCE:1]", "SelectString", 'Microsoft Print to PDF') ; Select print to PDF.
+	Sleep(10)
+	Send("!p") ; Click the Print button.
+	WinClose($hWnd) ; Close Print dialog.
+	$hWnd = WinWaitActive("Save Print Output As", '') ; Display Save As dialog.
+	Sleep(100)
+	ControlSetText($hWnd, "", "[CLASS:Edit; INSTANCE:1]", "C:\Source\SharpReferral\" & $fName) ; Set the full file name.
+	Sleep(10)
+	Send("!s") ; Click the Save button.
+	Sleep(1000)
+	WinClose($hWnd) ; Close Save As dialog.
 
 	; Done, close browser.
-	;Sleep(2000)
 	_IEQuit($oIE)
+	Sleep(100)
     Return True
 EndFunc
 
 Func PopulateReferralInfo()
 	; Execute application to populate referral info.
-    Run("java -jar SharpReferral.jar " & $fName)
+    Local $iRet = RunWait("java -jar SharpReferral.jar " & $fName)
+	;MsgBox($MB_SYSTEMMODAL, "", "The return code was: " & $iRet)
+	Sleep(100)
+	MsgBox($MB_ICONINFORMATION, "Sharp Referral", "All Done!")
 EndFunc
