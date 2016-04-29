@@ -203,8 +203,8 @@ public class Referral {
                             int mrnIndex = line.indexOf("MRN:");
                             String ptName = line.substring(nameIndex+6, mrnIndex);
                             String[] parts = ptName.trim().split(" ");
-                            data.lastName = parts[0];
-                            data.firstName = parts[1];
+                            data.firstName = parts[0];
+                            data.lastName = parts[1];
                             log.info("Patient Name: " + data.firstName + " " + data.lastName + "\n");
                             break;
                         case 6: // DoB, gender.
@@ -532,7 +532,6 @@ public class Referral {
     		so.setType("Program__c");
     		so.setField("RecordTypeId", SHARP_RECORD_TYPE_ID);
     		so.setField("Client__c", contactId);
-    		so.setField("Marital_Status__c", data.maritalStatus);
 
             String levelOfCare = data.ptClass.toLowerCase();
             if (levelOfCare.contains("inpatient")) {
@@ -547,6 +546,8 @@ public class Referral {
             else if (levelOfCare.contains("outpatient")) {
                 so.setField("Level_of_Care__c", "Intensive Outpatient/Outpatient");
             }
+
+    		so.setField("Marital_Status__c", data.maritalStatus);
 
             String emergencyContact = "";
             String emergencyPhone = null;
@@ -581,6 +582,7 @@ public class Referral {
                     emergencyContact += " - " + data.contact2;
                 }
             }
+/*
             so.setField("Caller_Caregiver_Name__c", emergencyContact);
 
             String relationship = emergencyContact.toLowerCase();
@@ -609,6 +611,7 @@ public class Referral {
             else if (relationship.contains("other")) {
                 so.setField("Caller_s_relationship_to_PWN__c", "Other");
             }
+*/
 
             if (emergencyPhone != null) {
                 so.setField("Caller_Caregiver_Phone__c", emergencyPhone);
@@ -625,6 +628,7 @@ public class Referral {
                 }
             }
 
+    		so.setField("Notes__c", data.comments);
     		so.setField("Patient_Type__c", "Impatient Discharge");
     		so.setField("Primary_Diagnosis__c", data.primaryDiagnosis);
     		so.setField("Additional_Diagnosis_e_g_Psychiatric__c", data.additionalDiagnosis);
@@ -648,7 +652,6 @@ public class Referral {
                 so.setField("Facility__c", "Mesa Vista");
             }
 
-    		so.setField("Notes__c", data.comments);
     		records[0] = so;
 
     		// create the records in Salesforce.com
