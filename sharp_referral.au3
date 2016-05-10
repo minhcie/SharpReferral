@@ -15,13 +15,16 @@
 #include <StringConstants.au3>
 
 ; Create a GUI for referral id and access code.
-Local $gui = GUICreate("Sharp Referral", 230, 160)
+Local $gui = GUICreate("Sharp Referral", 230, 210)
 Local $referralIdInput = GUICtrlCreateLabel("Referral ID", 8, 10, 135, 17)
 Local $referralId = GUICtrlCreateInput("referral id", 8, 30, 215, 21)
 Local $accessCodeInput = GUICtrlCreateLabel("Access Code", 8, 60, 135, 17)
 Local $accessCode = GUICtrlCreateInput("access code", 8, 80, 215, 21)
-Local $idOkBtn = GUICtrlCreateButton("&OK", 8, 120, 106, 30)
-Local $idCancelBtn = GUICtrlCreateButton("&Cancel", 117, 120, 106, 30)
+Local $ownerInput = GUICtrlCreateLabel("Owner Name", 8, 110, 135, 17)
+Local $owner = GUICtrlCreateInput("first last", 8, 130, 215, 21)
+Local $idOkBtn = GUICtrlCreateButton("&OK", 8, 170, 106, 30)
+Local $idCancelBtn = GUICtrlCreateButton("&Cancel", 117, 170, 106, 30)
+
 Global $fName = "";
 
 ; Display a GUI.
@@ -38,7 +41,7 @@ While 1
 	  Case $idOkBtn
 		 Local $ret = GetReferralInfo(GUICtrlRead($referralId), GUICtrlRead($accessCode))
 		 If $ret == True Then
-			PopulateReferralInfo()
+			PopulateReferralInfo(GUICtrlRead($owner))
 		 EndIf
 		 ExitLoop
    EndSwitch
@@ -123,10 +126,14 @@ Func GetReferralInfo($id, $code)
    EndIf
 EndFunc
 
-Func PopulateReferralInfo()
+Func PopulateReferralInfo($ownerName)
    ; Execute application to populate referral info.
-   Local $iRet = RunWait("java -jar SharpReferral.jar " & $fName)
+   Local $iRet = RunWait("java -jar SharpReferral.jar " & $fName & " " & $ownerName)
    ;MsgBox($MB_SYSTEMMODAL, "", "The return code was: " & $iRet)
    Sleep(100)
-   MsgBox($MB_ICONINFORMATION, "Sharp Referral", "All Done!")
+   If $iRet <> -1 Then
+	  MsgBox($MB_ICONINFORMATION, "Sharp Referral", "All done.  Please check the result.")
+   Else
+	  MsgBox($MB_ICONERROR, "Sharp Referral", "Error populating referral info.  Please check the log file.")
+   EndIf
 EndFunc

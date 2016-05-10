@@ -32,28 +32,17 @@ public class Referral {
 
     static void usage() {
         System.err.println("");
-        System.err.println("usage: java -jar SharpReferral.jar <referral.pdf>");
+        System.err.println("usage: java -jar SharpReferral.jar <referral.pdf> <owner>");
         System.err.println("");
         System.exit(-1);
     }
 
     public static void main(String[] args) {
-        if (args.length == 0 || args.length < 1) {
+        if (args.length == 0 || args.length < 2) {
             usage();
         }
 
         try {
-            String fileName = args[0];
-            log.info("Reading Sharp referral document (" + fileName + ")...\n");
-            File f = new File(fileName);
-            if (!f.exists()) {
-                log.error("Sharp referral document not found!\n");
-                System.exit(-1);
-            }
-
-            // Parse referral info.
-            ReferralData data = parseReferralInfo(fileName);
-
             // Establish connection to Salesforce.
         	ConnectorConfig config = new ConnectorConfig();
         	config.setUsername(USERNAME);
@@ -67,12 +56,32 @@ public class Referral {
     		log.info("Username: " + config.getUsername() + "\n");
     		log.info("SessionId: " + config.getSessionId() + "\n");
 
+            // Check to make sure referral document exists.
+            String fileName = args[0];
+            log.info("Reading Sharp referral document (" + fileName + ")...\n");
+            File f = new File(fileName);
+            if (!f.exists()) {
+                log.error("Sharp referral document not found!\n");
+                System.exit(-1);
+            }
+
+            // Check to make sure owner is valid.
+            String owner = args[1];
+            String ownerId = queryUser(connection, owner);
+            if (ownerId == null) {
+                log.error("Invalid owner name!");
+                System.exit(-1);
+            }
+
+            // Parse referral info.
+            ReferralData data = parseReferralInfo(fileName);
+
             // Check to see if contact has been added?
             String contactId = null;
             SObject contact = queryContact(connection, data);
             if (contact == null) {
                 // Add new contact.
-                contactId = createContact(connection, data);
+                contactId = createContact(connection, ownerId, data);
             }
             else {
                 // Update existing contact.
@@ -86,14 +95,17 @@ public class Referral {
         catch (IOException ioe) {
             log.error(ioe.getMessage());
             ioe.printStackTrace();
+            System.exit(-1);
         }
     	catch (ConnectionException ce) {
             log.error(ce.getMessage());
             ce.printStackTrace();
+            System.exit(-1);
     	}
         catch (Exception e) {
             log.error(e.getMessage());
             e.printStackTrace();
+            System.exit(-1);
         }
     }
 
@@ -365,6 +377,36 @@ public class Referral {
         return data;
     }
 
+    private static String queryUser(PartnerConnection conn, String name) {
+        log.info("Querying user " + name + "...");
+        String userId = null;
+        if (name == null || name.trim().length() <= 0) {
+            return userId;
+        }
+
+        // Parse user first and last name.
+        String[] parts = name.split(" ");
+
+    	try {
+    		StringBuilder sb = new StringBuilder();
+    		sb.append("SELECT Id, FirstName, LastName, Account.Name ");
+    		sb.append("FROM User ");
+    		sb.append("WHERE FirstName = '" + parts[0] + "' ");
+    		sb.append("  AND LastName = '" + parts[1] + "'");
+
+    		QueryResult queryResults = conn.query(sb.toString());
+    		if (queryResults.getSize() > 0) {
+    			for (SObject s: queryResults.getRecords()) {
+                    userId = s.getId();
+    			}
+    		}
+    	}
+    	catch (Exception e) {
+    		e.printStackTrace();
+    	}
+        return userId;
+    }
+
     private static SObject queryContact(PartnerConnection conn, ReferralData data) {
         SObject result = null;
     	log.info("Querying contact " + data.firstName + " " + data.lastName + "...\n");
@@ -390,7 +432,8 @@ public class Referral {
         return result;
     }
 
-    private static String createContact(PartnerConnection conn, ReferralData data) {
+    private static String createContact(PartnerConnection conn, String ownerId,
+                                        ReferralData data) {
         String contactId = null;
     	log.info("Creating new contact " + data.firstName + " " + data.lastName + "...\n");
 
@@ -399,6 +442,7 @@ public class Referral {
 			SObject so = copyContactInfo(data);
     		so.setField("AccountId", ACCOUNT_TYPE_ID);
     		so.setField("RecordTypeId", CONTACT_RECORD_TYPE_ID);
+            so.setField("OwnerId", ownerId);
     		records[0] = so;
 
     		// Create the record in Salesforce.
