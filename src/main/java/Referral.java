@@ -90,7 +90,7 @@ public class Referral {
             }
 
             // Populate referral info.
-            createReferral(connection, contactId, data);
+            createReferral(connection, ownerId, contactId, data);
         }
         catch (IOException ioe) {
             log.error(ioe.getMessage());
@@ -566,8 +566,8 @@ public class Referral {
         return so;
     }
 
-    private static void createReferral(PartnerConnection conn, String contactId,
-                                       ReferralData data) {
+    private static void createReferral(PartnerConnection conn, String ownerId,
+                                       String contactId, ReferralData data) {
     	log.info("Creating Sharp referral program for contact Id: " + contactId + "...\n");
 
     	SObject[] records = new SObject[1];
@@ -575,6 +575,7 @@ public class Referral {
     		SObject so = new SObject();
     		so.setType("Program__c");
     		so.setField("RecordTypeId", SHARP_RECORD_TYPE_ID);
+    		so.setField("OwnerId", ownerId);
     		so.setField("Client__c", contactId);
 
             String levelOfCare = data.ptClass.toLowerCase();

@@ -17,11 +17,11 @@
 ; Create a GUI for referral id and access code.
 Local $gui = GUICreate("Sharp Referral", 230, 210)
 Local $referralIdInput = GUICtrlCreateLabel("Referral ID", 8, 10, 135, 17)
-Local $referralId = GUICtrlCreateInput("referral id", 8, 30, 215, 21)
+Local $referralId = GUICtrlCreateInput("", 8, 30, 215, 21)
 Local $accessCodeInput = GUICtrlCreateLabel("Access Code", 8, 60, 135, 17)
-Local $accessCode = GUICtrlCreateInput("access code", 8, 80, 215, 21)
-Local $ownerInput = GUICtrlCreateLabel("Owner Name", 8, 110, 135, 17)
-Local $owner = GUICtrlCreateInput("first last", 8, 130, 215, 21)
+Local $accessCode = GUICtrlCreateInput("", 8, 80, 215, 21)
+Local $ownerInput = GUICtrlCreateLabel("Owner Name (First Last)", 8, 110, 135, 17)
+Local $owner = GUICtrlCreateInput("", 8, 130, 215, 21)
 Local $idOkBtn = GUICtrlCreateButton("&OK", 8, 170, 106, 30)
 Local $idCancelBtn = GUICtrlCreateButton("&Cancel", 117, 170, 106, 30)
 
@@ -128,7 +128,7 @@ EndFunc
 
 Func PopulateReferralInfo($ownerName)
    ; Execute application to populate referral info.
-   Local $iRet = RunWait("java -jar SharpReferral.jar " & $fName & " " & $ownerName)
+   Local $iRet = RunWait("java -jar SharpReferral.jar " & $fName & " " & '"' & $ownerName & '"')
    ;MsgBox($MB_SYSTEMMODAL, "", "The return code was: " & $iRet)
    Sleep(100)
    If $iRet <> -1 Then
