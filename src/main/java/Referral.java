@@ -90,7 +90,9 @@ public class Referral {
             }
 
             // Populate referral info.
-            createReferral(connection, ownerId, contactId, data);
+            if (contactId != null) {
+                createReferral(connection, ownerId, contactId, data);
+            }
         }
         catch (IOException ioe) {
             log.error(ioe.getMessage());
@@ -176,8 +178,10 @@ public class Referral {
                             log.info("MRN: " + data.mrn + "\n");
                             break;
                         case 1: // Facility.
-                            data.facility = lines[++j];
-                            log.info("Sending Organization: " + data.facility + "\n");
+                            if (lines.length >= (j+1)) {
+                                data.facility = lines[++j];
+                                log.info("Sending Organization: " + data.facility + "\n");
+                            }
                             break;
                         case 2: // Referral type.
                             int index = line.indexOf("Referral Type:");
@@ -186,44 +190,64 @@ public class Referral {
                             break;
                         case 3: // Reason.
                             // Reason starts from next line to referral comments.
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Referral Comments")) {
-                                if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + "\n");
-                                }
+                            if (lines.length >= (j+1)) {
                                 nextLine = lines[++j];
+                                while (nextLine != null && !nextLine.contains("Referral Comments")) {
+                                    if (nextLine.trim().length() > 0) {
+                                        sb.append(nextLine + "\n");
+                                    }
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
+                                }
+                                data.reason = sb.toString();
+                                log.info("Reason: " + data.reason + "\n");
+                                j--; // Move back 1 line.
                             }
-                            data.reason = sb.toString();
-                            log.info("Reason: " + data.reason + "\n");
-                            j--; // Move back 1 line.
                             break;
                         case 4: // Comments.
                             // Comments starts from next line to sender's last activity.
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Sender's last")) {
-                                if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + "\n");
-                                }
+                            if (lines.length >= (j+1)) {
                                 nextLine = lines[++j];
+                                while (nextLine != null && !nextLine.contains("Sender's last")) {
+                                    if (nextLine.trim().length() > 0) {
+                                        sb.append(nextLine + "\n");
+                                    }
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
+                                }
+                                data.comments = sb.toString();
+                                log.info("Referral Comments: " + data.comments + "\n");
+                                j--; // Move back 1 line.
                             }
-                            data.comments = sb.toString();
-                            log.info("Referral Comments: " + data.comments + "\n");
-                            j--; // Move back 1 line.
                             break;
                         case 5: // Name.
                             int nameIndex = line.indexOf("Name:");
                             int mrnIndex = line.indexOf("MRN:");
                             String ptName = line.substring(nameIndex+6, mrnIndex);
                             String[] parts = ptName.trim().split(" ");
-                            data.firstName = parts[0];
-                            data.lastName = parts[1];
+                            if (parts.length == 3) {
+                                data.firstName = parts[0];
+                                data.lastName = parts[2];
+                            }
+                            else {
+                                data.firstName = parts[0];
+                                data.lastName = parts[1];
+                            }
                             log.info("Patient Name: " + data.firstName + " " + data.lastName + "\n");
                             break;
                         case 6: // DoB, gender.
                             int dobIndex = line.indexOf("Date of Birth:");
                             int genderIndex = line.indexOf("Gender:");
-                            String sDob = line.substring(dobIndex+15, dobIndex+25);
-                            data.dob = sdf.parse(sDob);
+                            String sDob = line.substring(dobIndex+15, dobIndex+26);
+                            data.dob = sdf.parse(sDob.trim());
                             data.gender = line.substring(genderIndex+8).trim();
                             log.info("Date of Birth: " + data.dob.toString() + "\n");
                             log.info("Gender: " + data.gender + "\n");
@@ -242,24 +266,31 @@ public class Referral {
                             break;
                         case 8: // Home, work, mobile phones.
                             int phone = 1;
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Marital Status")) {
-                                if (phone == 1) {
-                                    data.homePhone = nextLine.trim();
-                                }
-                                else if (phone == 2) {
-                                    data.workPhone = nextLine.trim();
-                                }
-                                else {
-                                    data.mobilePhone = nextLine.trim();
-                                }
+                            if (lines.length >= (j+1)) {
                                 nextLine = lines[++j];
-                                phone++;
+                                while (nextLine != null && !nextLine.contains("Marital Status")) {
+                                    if (phone == 1) {
+                                        data.homePhone = nextLine.trim();
+                                    }
+                                    else if (phone == 2) {
+                                        data.workPhone = nextLine.trim();
+                                    }
+                                    else {
+                                        data.mobilePhone = nextLine.trim();
+                                    }
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
+                                    phone++;
+                                }
+                                log.info("Home Phone: " + data.homePhone + "\n");
+                                log.info("Work Phone: " + data.workPhone + "\n");
+                                log.info("Mobile Phone: " + data.mobilePhone + "\n");
+                                j--; // Move back 1 line.
                             }
-                            log.info("Home Phone: " + data.homePhone + "\n");
-                            log.info("Work Phone: " + data.workPhone + "\n");
-                            log.info("Mobile Phone: " + data.mobilePhone + "\n");
-                            j--; // Move back 1 line.
                             break;
                         case 9: // Marital status, SSN.
                             int msIndex = line.indexOf("Marital Status:");
@@ -282,47 +313,56 @@ public class Referral {
                             break;
                         case 12: // Emergency contact 1.
                             // Contact 1 starts from next line to contact 2.
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Emergency")) {
-                                if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + " ");
-                                }
+                            if (lines.length >= (j+1)) {
                                 nextLine = lines[++j];
-                            }
-                            data.contact1 = sb.toString();
-                            log.info("Emergency Contact 1: " + data.contact1 + "\n");
-                            j--; // Move back 1 line.
+                                while (nextLine != null && !nextLine.contains("Emergency")) {
+                                    if (nextLine.trim().length() > 0) {
+                                        sb.append(nextLine + " ");
+                                    }
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
+                                }
+                                data.contact1 = sb.toString();
+                                log.info("Emergency Contact 1: " + data.contact1 + "\n");
+                                j--; // Move back 1 line.
 
-                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
-                            matcher = pattern.matcher(data.contact1);
-                            if (matcher.find()) {
-                                log.info("Emergency Phone 1: " + matcher.group(0) + "\n");
+                                pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                                matcher = pattern.matcher(data.contact1);
+                                if (matcher.find()) {
+                                    log.info("Emergency Phone 1: " + matcher.group(0) + "\n");
+                                }
                             }
                             break;
                         case 13: // Emergency contact 2.
                             // Contact 2 starts from next line to contact 2.
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Allscripts")) {
-                                if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + " ");
-                                }
+                            if (lines.length >= (j+1)) {
+                                nextLine = lines[++j];
+                                while (nextLine != null && !nextLine.contains("Allscripts")) {
+                                    if (nextLine.trim().length() > 0) {
+                                        sb.append(nextLine + " ");
+                                    }
 
-                                // End of page 1?
-                                if (lines.length >= (j+1)) {
-                                    nextLine = null;
+                                    // End of page 1?
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
                                 }
-                                else {
-                                    nextLine = lines[++j];
-                                }
-                            }
-                            data.contact2 = sb.toString();
-                            log.info("Emergency Contact 2: " + data.contact2 + "\n");
-                            j--; // Move back 1 line.
+                                data.contact2 = sb.toString();
+                                log.info("Emergency Contact 2: " + data.contact2 + "\n");
+                                j--; // Move back 1 line.
 
-                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
-                            matcher = pattern.matcher(data.contact1);
-                            if (matcher.find()) {
-                                log.info("Emergency Phone 2: " + matcher.group(0) + "\n");
+                                pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                                matcher = pattern.matcher(data.contact1);
+                                if (matcher.find()) {
+                                    log.info("Emergency Phone 2: " + matcher.group(0) + "\n");
+                                }
                             }
                             break;
                         case 14: // Admission date.
@@ -332,11 +372,13 @@ public class Referral {
                             log.info("Admission Date: " + data.admissionDate + "\n");
                             break;
                         case 15: // Discharge date.
-                            nextLine = lines[++j];
-                            int firstBlankIndex = nextLine.indexOf(" ");
-                            String sDischarge = nextLine.substring(0, firstBlankIndex).trim();
-                            data.dischargeDate = sdf.parse(sDischarge);
-                            log.info("Discharge Date: " + data.dischargeDate + "\n");
+                            if (lines.length >= (j+1)) {
+                                nextLine = lines[++j];
+                                int firstBlankIndex = nextLine.indexOf(" ");
+                                String sDischarge = nextLine.substring(0, firstBlankIndex).trim();
+                                data.dischargeDate = sdf.parse(sDischarge);
+                                log.info("Discharge Date: " + data.dischargeDate + "\n");
+                            }
                             break;
                         case 16: // Patient class.
                             int ptClassIndex = line.indexOf("Patient Class:");
@@ -346,26 +388,37 @@ public class Referral {
                             break;
                         case 17: // Primary diagnosis.
                             // Diagnosis starts from next line to admitting physician.
-                            nextLine = lines[++j];
-                            while (nextLine != null && !nextLine.contains("Admitting")) {
-                                if (nextLine.trim().length() > 0) {
-                                    sb.append(nextLine + "\n");
-                                }
+                            if (lines.length >= (j+1)) {
                                 nextLine = lines[++j];
+                                while (nextLine != null && !nextLine.contains("Admitting")) {
+                                    if (nextLine.trim().length() > 0) {
+                                        sb.append(nextLine + "\n");
+                                    }
+                                    if (lines.length >= (j+1)) {
+                                        nextLine = null;
+                                    }
+                                    else {
+                                        nextLine = lines[++j];
+                                    }
+                                }
+                                data.primaryDiagnosis = sb.toString();
+                                log.info("Primary Diagnosis: " + data.primaryDiagnosis + "\n");
+                                j--; // Move back 1 line.
                             }
-                            data.primaryDiagnosis = sb.toString();
-                            log.info("Primary Diagnosis: " + data.primaryDiagnosis + "\n");
-                            j--; // Move back 1 line.
                             break;
                         case 18: // Admitting physician.
-                            j += 2;
-                            data.admittingPhysician = lines[j].trim();
-                            log.info("Admitting Physician: " + data.admittingPhysician + "\n");
+                            if (lines.length >= (j+2)) {
+                                j += 2;
+                                data.admittingPhysician = lines[j].trim();
+                                log.info("Admitting Physician: " + data.admittingPhysician + "\n");
+                            }
                             break;
                         case 19: // Attending physician.
-                            j += 2;
-                            data.attendingPhysician = lines[j].trim();
-                            log.info("Admitting Physician: " + data.attendingPhysician + "\n");
+                            if (lines.length >= (j+2)) {
+                                j += 2;
+                                data.attendingPhysician = lines[j].trim();
+                                log.info("Admitting Physician: " + data.attendingPhysician + "\n");
+                            }
                             break;
                         default:
                             break;
