@@ -76,6 +76,7 @@ public class Referral {
             // Parse referral info.
             ReferralData data = parseReferralInfo(fileName);
 
+            /*
             // Check to see if contact has been added?
             String contactId = null;
             SObject contact = queryContact(connection, data);
@@ -93,6 +94,7 @@ public class Referral {
             if (contactId != null) {
                 createReferral(connection, ownerId, contactId, data);
             }
+            */
         }
         catch (IOException ioe) {
             log.error(ioe.getMessage());
@@ -135,298 +137,344 @@ public class Referral {
                          "Admitting",
                          "Attending"};
 
-        // Parse pdf document.
+        // Extract pdf document.
         PdfReader reader = new PdfReader(fileName);
         int pages = reader.getNumberOfPages();
         log.info("PDF has " + pages + " pages.\n");
+
+        String content = "";
         PdfTextExtractor extractor = new PdfTextExtractor(reader);
         for (int i = 1; i <= pages; i++) {
-            String content = extractor.getTextFromPage(i);
+            String sTemp = extractor.getTextFromPage(i);
             // Replace "weird" characters.  Order important.
-            //content = content.replaceAll(" ", "");
-            content = content.replaceAll("\\xA0", " ");
-            content = content.replaceAll("\\xAD", "-");
-            log.info("Page " + i + " content:\n" + content + "\n");
+            //sTemp = sTemp.replaceAll(" ", "");
+            sTemp = sTemp.replaceAll("\\xA0", " ");
+            sTemp = sTemp.replaceAll("\\xAD", "-");
+            sTemp = sTemp.replaceAll("https://www.extendedcare.com/professional/WebReferral/Logon.aspx",
+                                     "https://www.extendedcare.com/professional/WebReferral/Logon.aspx\r\n");
+            // Remove page header.
+            sTemp = sTemp.replaceAll("(?m)^Page.*(?:\r?\n)?", "");
 
-            // Parse content.
-            log.info("Page " + i + " content:\n");
-            String[] lines = content.split("\\r?\\n");
-            for (int j = 0; j < lines.length; j++) {
-                String line = lines[j];
+            // Remove page footer.
+            sTemp = sTemp.replaceAll("(?m)https://www.extendedcare.com.*(?:\r?\n)?", "DATA:");
+            content += sTemp;
+        }
+        reader.close();
+        log.info("PDF content:\n" + content + "\n");
 
-                // Find matching key word.
-                boolean keyFound = false;
-                int k;
-                for (k = 0; k < keys.length; k++) {
-                    if (line.contains(keys[k])) {
-                        keyFound = true;
-                        break;
-                    }
+        // Parse pdf content.
+        String[] lines = content.split("\\r?\\n");
+        for (int j = 0; j < lines.length; j++) {
+            String line = lines[j];
+
+            // Find matching key word.
+            boolean keyFound = false;
+            int k;
+            for (k = 0; k < keys.length; k++) {
+                if (line.contains(keys[k])) {
+                    keyFound = true;
+                    break;
                 }
-                if (keyFound) {
-                    // Parse key data.
-                    StringBuilder sb = new StringBuilder();
-                    String nextLine = "";
-                    Pattern pattern = null;
-                    Matcher matcher = null;
-                    switch (k) {
-                        case 0: // Referral #, MRN.
-                            String[] info = line.split("-");
-                            data.number = info[1].substring(11).trim();
-                            data.mrn = info[2].substring(5).trim();
-                            log.info("Referral #: " + data.number + "\n");
-                            log.info("MRN: " + data.mrn + "\n");
-                            break;
-                        case 1: // Facility.
-                            if (lines.length >= (j+1)) {
-                                data.facility = lines[++j];
-                                log.info("Sending Organization: " + data.facility + "\n");
-                            }
-                            break;
-                        case 2: // Referral type.
-                            int index = line.indexOf("Referral Type:");
-                            data.referralType = line.substring(index+15).trim();
-                            log.info("Referral Type: " + data.referralType + "\n");
-                            break;
-                        case 3: // Reason.
-                            // Reason starts from next line to referral comments.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Referral Comments")) {
-                                    if (nextLine.trim().length() > 0) {
-                                        sb.append(nextLine + "\n");
-                                    }
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
-                                    else {
-                                        nextLine = lines[++j];
-                                    }
+            }
+            if (keyFound) {
+                // Parse key data.
+                StringBuilder sb = new StringBuilder();
+                String nextLine = "";
+                Pattern pattern = null;
+                Matcher matcher = null;
+                switch (k) {
+                    case 0: // Referral #, MRN.
+                        String[] info = line.split("-");
+                        data.number = info[1].substring(11).trim();
+                        data.mrn = info[2].substring(5).trim();
+                        log.info("Referral #: " + data.number + "\n");
+                        log.info("MRN: " + data.mrn + "\n");
+                        break;
+                    case 1: // Facility.
+                        if (lines.length >= (j+1)) {
+                            data.facility = lines[++j];
+                            log.info("Sending Organization: " + data.facility + "\n");
+                        }
+                        break;
+                    case 2: // Referral type.
+                        int index = line.indexOf("Referral Type:");
+                        data.referralType = line.substring(index+15).trim();
+                        log.info("Referral Type: " + data.referralType + "\n");
+                        break;
+                    case 3: // Reason.
+                        // Reason starts from next line to referral comments.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Referral Comments")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + "\n");
                                 }
-                                data.reason = sb.toString();
-                                log.info("Reason: " + data.reason + "\n");
-                                j--; // Move back 1 line.
-                            }
-                            break;
-                        case 4: // Comments.
-                            // Comments starts from next line to sender's last activity.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Sender's last")) {
-                                    if (nextLine.trim().length() > 0) {
-                                        sb.append(nextLine + "\n");
-                                    }
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
-                                    else {
-                                        nextLine = lines[++j];
-                                    }
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
                                 }
-                                data.comments = sb.toString();
-                                log.info("Referral Comments: " + data.comments + "\n");
-                                j--; // Move back 1 line.
+                                else {
+                                    nextLine = lines[++j];
+                                }
                             }
-                            break;
-                        case 5: // Name.
-                            int nameIndex = line.indexOf("Name:");
-                            int mrnIndex = line.indexOf("MRN:");
-                            String ptName = line.substring(nameIndex+6, mrnIndex);
-                            String[] parts = ptName.trim().split(" ");
-                            if (parts.length == 3) {
-                                data.firstName = parts[0];
-                                data.lastName = parts[2];
+                            data.reason = sb.toString();
+                            log.info("Reason: " + data.reason + "\n");
+                            j--; // Move back 1 line.
+                        }
+                        break;
+                    case 4: // Comments.
+                        // Comments starts from next line to sender's last activity.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Sender's last")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + "\n");
+                                }
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
+                                }
+                                else {
+                                    nextLine = lines[++j];
+                                }
                             }
-                            else {
-                                data.firstName = parts[0];
-                                data.lastName = parts[1];
+                            data.comments = sb.toString();
+                            log.info("Referral Comments: " + data.comments + "\n");
+                            j--; // Move back 1 line.
+                        }
+                        break;
+                    case 5: // Name.
+                        int nameIndex = line.indexOf("Name:");
+                        int mrnIndex = line.indexOf("MRN:");
+                        String ptName = line.substring(nameIndex+6, mrnIndex);
+                        String[] parts = ptName.trim().split(" ");
+                        if (parts.length == 3) {
+                            data.firstName = parts[0];
+                            data.lastName = parts[2];
+                        }
+                        else {
+                            data.firstName = parts[0];
+                            data.lastName = parts[1];
+                        }
+                        log.info("Patient Name: " + data.firstName + " " + data.lastName + "\n");
+                        break;
+                    case 6: // DoB, gender.
+                        int dobIndex = line.indexOf("Date of Birth:");
+                        int genderIndex = line.indexOf("Gender:");
+                        String sDob = line.substring(dobIndex+15, dobIndex+26);
+                        data.dob = sdf.parse(sDob.trim());
+                        data.gender = line.substring(genderIndex+8).trim();
+                        log.info("Date of Birth: " + data.dob.toString() + "\n");
+                        log.info("Gender: " + data.gender + "\n");
+                        break;
+                    case 7: // Address.
+                        int addrIndex = line.indexOf("Address:");
+                        int homePhoneIndex = line.indexOf("Home:");
+                        String[] part1s = null;
+                        if (homePhoneIndex > -1) {
+                            data.address1 = line.substring(addrIndex+9, homePhoneIndex).trim();
+                            j++;
+                            String sTemp = lines[j];
+                            int dataIndex = sTemp.indexOf("DATA:");
+                            if (dataIndex > -1) {
+                                sTemp = sTemp.substring(dataIndex+5);
                             }
-                            log.info("Patient Name: " + data.firstName + " " + data.lastName + "\n");
-                            break;
-                        case 6: // DoB, gender.
-                            int dobIndex = line.indexOf("Date of Birth:");
-                            int genderIndex = line.indexOf("Gender:");
-                            String sDob = line.substring(dobIndex+15, dobIndex+26);
-                            data.dob = sdf.parse(sDob.trim());
-                            data.gender = line.substring(genderIndex+8).trim();
-                            log.info("Date of Birth: " + data.dob.toString() + "\n");
-                            log.info("Gender: " + data.gender + "\n");
-                            break;
-                        case 7: // Address.
-                            int addrIndex = line.indexOf("Address:");
+                            int workPhoneIndex = sTemp.indexOf("Work:");
+                            String s = "";
+                            if (workPhoneIndex > -1) {
+                                sTemp = sTemp.substring(0, workPhoneIndex);
+                            }
+                            part1s = sTemp.trim().split(",");
+
+                            // Parse home phone as well.
+                            data.homePhone = line.substring(homePhoneIndex+6).trim();
+                        }
+                        else {
                             data.address1 = line.substring(addrIndex+9).trim();
                             j++;
-                            String[] part1s = lines[j].trim().split(",");
-                            data.city = part1s[0].trim();
+                            part1s = lines[j].trim().split(",");
+                        }
+                        data.city = part1s[0].trim();
+                        if (part1s.length > 1) {
                             String[] part2s = part1s[1].trim().split(" ");
                             data.state = part2s[0].trim();
                             data.zip = part2s[1].trim();
                             log.info("Address: " + data.address1 + ", " + data.city +
                                      ", " + data.state + " " + data.zip + "\n");
-                            break;
-                        case 8: // Home, work, mobile phones.
-                            int phone = 1;
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Marital Status")) {
-                                    if (phone == 1) {
-                                        data.homePhone = nextLine.trim();
-                                    }
-                                    else if (phone == 2) {
+                        }
+                        else {
+                            log.info("Address: " + data.address1 + ", " + data.city + "\n");
+                        }
+                        break;
+                    case 8: // Home, work, mobile phones.
+                        int phone = 1;
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Marital Status")) {
+                                if (phone == 1) {
+                                    if (data.homePhone != null && data.homePhone.length() > 0) {
                                         data.workPhone = nextLine.trim();
                                     }
                                     else {
+                                        data.homePhone = nextLine.trim();
+                                    }
+                                }
+                                else if (phone == 2) {
+                                    if (data.workPhone != null && data.workPhone.length() > 0) {
                                         data.mobilePhone = nextLine.trim();
                                     }
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
                                     else {
-                                        nextLine = lines[++j];
+                                        data.workPhone = nextLine.trim();
                                     }
-                                    phone++;
                                 }
-                                log.info("Home Phone: " + data.homePhone + "\n");
-                                log.info("Work Phone: " + data.workPhone + "\n");
-                                log.info("Mobile Phone: " + data.mobilePhone + "\n");
-                                j--; // Move back 1 line.
+                                else {
+                                    data.mobilePhone = nextLine.trim();
+                                }
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
+                                }
+                                else {
+                                    nextLine = lines[++j];
+                                }
+                                phone++;
                             }
-                            break;
-                        case 9: // Marital status, SSN.
-                            int msIndex = line.indexOf("Marital Status:");
-                            int ssnIndex = line.indexOf("SSN:");
-                            data.maritalStatus  = line.substring(msIndex+16, ssnIndex).trim();
-                            data.ssn = line.substring(ssnIndex+5).trim();
-                            log.info("Marital Status: " + data.maritalStatus + "\n");
-                            log.info("SSN: " + data.ssn + "\n");
-                            break;
-                        case 10: // Race.
-                            int raceIndex = line.indexOf("Race:");
-                            int race2Index = line.indexOf("Race 2:");
-                            data.race = line.substring(raceIndex+6, race2Index);
-                            log.info("Race: " + data.race.trim() + "\n");
-                            break;
-                        case 11: // Religion.
-                            int relIndex = line.indexOf("Religion:");
-                            data.religion = line.substring(relIndex+10);
-                            log.info("Religion: " + data.religion.trim() + "\n");
-                            break;
-                        case 12: // Emergency contact 1.
-                            // Contact 1 starts from next line to contact 2.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Emergency")) {
-                                    if (nextLine.trim().length() > 0) {
-                                        sb.append(nextLine + " ");
-                                    }
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
-                                    else {
-                                        nextLine = lines[++j];
-                                    }
+                            log.info("Home Phone: " + data.homePhone + "\n");
+                            log.info("Work Phone: " + data.workPhone + "\n");
+                            log.info("Mobile Phone: " + data.mobilePhone + "\n");
+                            j--; // Move back 1 line.
+                        }
+                        break;
+                    case 9: // Marital status, SSN.
+                        int msIndex = line.indexOf("Marital Status:");
+                        int ssnIndex = line.indexOf("SSN:");
+                        data.maritalStatus  = line.substring(msIndex+16, ssnIndex).trim();
+                        data.ssn = line.substring(ssnIndex+5).trim();
+                        log.info("Marital Status: " + data.maritalStatus + "\n");
+                        log.info("SSN: " + data.ssn + "\n");
+                        break;
+                    case 10: // Race.
+                        int raceIndex = line.indexOf("Race:");
+                        int race2Index = line.indexOf("Race 2:");
+                        data.race = line.substring(raceIndex+6, race2Index);
+                        log.info("Race: " + data.race.trim() + "\n");
+                        break;
+                    case 11: // Religion.
+                        int relIndex = line.indexOf("Religion:");
+                        data.religion = line.substring(relIndex+10);
+                        log.info("Religion: " + data.religion.trim() + "\n");
+                        break;
+                    case 12: // Emergency contact 1.
+                        // Contact 1 starts from next line to contact 2.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Emergency")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + " ");
                                 }
-                                data.contact1 = sb.toString();
-                                log.info("Emergency Contact 1: " + data.contact1 + "\n");
-                                j--; // Move back 1 line.
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
+                                }
+                                else {
+                                    nextLine = lines[++j];
+                                }
+                            }
+                            data.contact1 = sb.toString();
+                            log.info("Emergency Contact 1: " + data.contact1 + "\n");
+                            j--; // Move back 1 line.
 
-                                pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
-                                matcher = pattern.matcher(data.contact1);
-                                if (matcher.find()) {
-                                    log.info("Emergency Phone 1: " + matcher.group(0) + "\n");
-                                }
+                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                            matcher = pattern.matcher(data.contact1);
+                            if (matcher.find()) {
+                                log.info("Emergency Phone 1: " + matcher.group(0) + "\n");
                             }
-                            break;
-                        case 13: // Emergency contact 2.
-                            // Contact 2 starts from next line to contact 2.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Allscripts")) {
-                                    if (nextLine.trim().length() > 0) {
-                                        sb.append(nextLine + " ");
-                                    }
+                        }
+                        break;
+                    case 13: // Emergency contact 2.
+                        // Contact 2 starts from next line to contact 2.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Allscripts")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + " ");
+                                }
 
-                                    // End of page 1?
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
-                                    else {
-                                        nextLine = lines[++j];
-                                    }
+                                // End of page 1?
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
                                 }
-                                data.contact2 = sb.toString();
-                                log.info("Emergency Contact 2: " + data.contact2 + "\n");
-                                j--; // Move back 1 line.
+                                else {
+                                    nextLine = lines[++j];
+                                }
+                            }
+                            data.contact2 = sb.toString();
+                            log.info("Emergency Contact 2: " + data.contact2 + "\n");
+                            j--; // Move back 1 line.
 
-                                pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
-                                matcher = pattern.matcher(data.contact1);
-                                if (matcher.find()) {
-                                    log.info("Emergency Phone 2: " + matcher.group(0) + "\n");
+                            pattern = Pattern.compile("\\(\\d{3}\\).*?\\d{3}.*?\\d{4}");
+                            matcher = pattern.matcher(data.contact1);
+                            if (matcher.find()) {
+                                log.info("Emergency Phone 2: " + matcher.group(0) + "\n");
+                            }
+                        }
+                        break;
+                    case 14: // Admission date.
+                        int admisIndex = line.indexOf("Admission Date:");
+                        String sAdmission = line.substring(admisIndex+16).trim();
+                        data.admissionDate = sdf.parse(sAdmission);
+                        log.info("Admission Date: " + data.admissionDate + "\n");
+                        break;
+                    case 15: // Discharge date.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            int firstBlankIndex = nextLine.indexOf(" ");
+                            String sDischarge = nextLine.substring(0, firstBlankIndex).trim();
+                            data.dischargeDate = sdf.parse(sDischarge);
+                            log.info("Discharge Date: " + data.dischargeDate + "\n");
+                        }
+                        break;
+                    case 16: // Patient class.
+                        int ptClassIndex = line.indexOf("Patient Class:");
+                        int sourceIndex = line.indexOf("Admit Source:");
+                        data.ptClass = line.substring(ptClassIndex+15, sourceIndex).trim();
+                        log.info("Patient Class: " + data.ptClass + "\n");
+                        break;
+                    case 17: // Primary diagnosis.
+                        // Diagnosis starts from next line to admitting physician.
+                        if (lines.length >= (j+1)) {
+                            nextLine = lines[++j];
+                            while (nextLine != null && !nextLine.contains("Admitting")) {
+                                if (nextLine.trim().length() > 0) {
+                                    sb.append(nextLine + "\n");
+                                }
+                                if (lines.length >= (j+1)) {
+                                    nextLine = null;
+                                }
+                                else {
+                                    nextLine = lines[++j];
                                 }
                             }
-                            break;
-                        case 14: // Admission date.
-                            int admisIndex = line.indexOf("Admission Date:");
-                            String sAdmission = line.substring(admisIndex+16).trim();
-                            data.admissionDate = sdf.parse(sAdmission);
-                            log.info("Admission Date: " + data.admissionDate + "\n");
-                            break;
-                        case 15: // Discharge date.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                int firstBlankIndex = nextLine.indexOf(" ");
-                                String sDischarge = nextLine.substring(0, firstBlankIndex).trim();
-                                data.dischargeDate = sdf.parse(sDischarge);
-                                log.info("Discharge Date: " + data.dischargeDate + "\n");
-                            }
-                            break;
-                        case 16: // Patient class.
-                            int ptClassIndex = line.indexOf("Patient Class:");
-                            int sourceIndex = line.indexOf("Admit Source:");
-                            data.ptClass = line.substring(ptClassIndex+15, sourceIndex).trim();
-                            log.info("Patient Class: " + data.ptClass + "\n");
-                            break;
-                        case 17: // Primary diagnosis.
-                            // Diagnosis starts from next line to admitting physician.
-                            if (lines.length >= (j+1)) {
-                                nextLine = lines[++j];
-                                while (nextLine != null && !nextLine.contains("Admitting")) {
-                                    if (nextLine.trim().length() > 0) {
-                                        sb.append(nextLine + "\n");
-                                    }
-                                    if (lines.length >= (j+1)) {
-                                        nextLine = null;
-                                    }
-                                    else {
-                                        nextLine = lines[++j];
-                                    }
-                                }
-                                data.primaryDiagnosis = sb.toString();
-                                log.info("Primary Diagnosis: " + data.primaryDiagnosis + "\n");
-                                j--; // Move back 1 line.
-                            }
-                            break;
-                        case 18: // Admitting physician.
-                            if (lines.length >= (j+2)) {
-                                j += 2;
-                                data.admittingPhysician = lines[j].trim();
-                                log.info("Admitting Physician: " + data.admittingPhysician + "\n");
-                            }
-                            break;
-                        case 19: // Attending physician.
-                            if (lines.length >= (j+2)) {
-                                j += 2;
-                                data.attendingPhysician = lines[j].trim();
-                                log.info("Admitting Physician: " + data.attendingPhysician + "\n");
-                            }
-                            break;
-                        default:
-                            break;
-                    }
+                            data.primaryDiagnosis = sb.toString();
+                            log.info("Primary Diagnosis: " + data.primaryDiagnosis + "\n");
+                            j--; // Move back 1 line.
+                        }
+                        break;
+                    case 18: // Admitting physician.
+                        if (lines.length >= (j+2)) {
+                            j += 2;
+                            data.admittingPhysician = lines[j].trim();
+                            log.info("Admitting Physician: " + data.admittingPhysician + "\n");
+                        }
+                        break;
+                    case 19: // Attending physician.
+                        if (lines.length >= (j+2)) {
+                            j += 2;
+                            data.attendingPhysician = lines[j].trim();
+                            log.info("Admitting Physician: " + data.attendingPhysician + "\n");
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
         }
-        reader.close();
         return data;
     }
 
